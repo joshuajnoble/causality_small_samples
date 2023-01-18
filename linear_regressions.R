@@ -24,7 +24,6 @@ ttestBF(experiment[experiment$treated == 1,]$grade_diff, experiment[experiment$t
 # Bayes: let's check our variances for a more complex model
 anovaBF(grade_diff ~ treatedfactor + classfactor, data = experiment)
 
-
 #Freq: frequentist analysis of possible model
 f_aov <- aov(grade_diff ~ treatedfactor, data = experiment)
 summary(f_aov)
@@ -50,20 +49,24 @@ pp_check(bayes_lr)
 conditional_effects(bayes_lr)
 
 #Bayes: we got the priors from our helpful colleague, womp womp
-brms_prior <- c(
-  prior(normal(0, 1), coef = treatedfactor0:classfactor1),
-  prior(normal(0, 1), coef = treatedfactor0:classfactor2),
-  prior(normal(0, 1), coef = treatedfactor1:classfactor1),
-  prior(normal(0, 1), coef = treatedfactor1:classfactor2)
+prior_strong <- c(
+  prior(normal(0.0, 2.0), coef = treatedfactor1:classfactor1),
+  prior(normal(0.0, 2.0), coef = treatedfactor1:classfactor2),
+  prior(normal(6.0, 2.0), coef = treatedfactor1:classfactor3),
+  prior(normal(6.0, 2.0), coef = treatedfactor1:classfactor4)
 )
 
-bayes_lr_small_prior <- brm(grade_diff ~ treatedfactor:classfactor, 
-                                 prior=brms_prior, data = experiment, refresh = 0, warmup = 500, iter = 1000)
+#Bayes:  using our prior
+brms_strong_prior <- brm(grade_diff ~ treatedfactor : classfactor, prior = prior_strong,
+                         data = experiment, refresh = 0, warmup = 500, iter = 1000, control=list(adapt_delta=0.95))
 
-summary(bayes_lr_small_prior)
+#Bayes: check our work
+summary(brms_strong_prior)
 
-#Bayes: check our interactions
-conditional_effects(bayes_lr_small_prior)
+#Bayes: look at the conditional effects
+conditional_effects(brms_strong_prior)
+pp_check(brms_strong_prior, type = "dens_overlay", ndraws=100)
+
 
 # now we got previous data
 prev_data <- read.csv("data/experiment_update.csv")
@@ -86,7 +89,7 @@ pp_check(bayes_lr_previous)
 
 #Bayes: use it to re-evaluate our current experiment
 brms_prior <- c(
-  prior(normal(7.0, 0.5), coef = treatedfactor1)
+  prior(normal(7.0, 1.0), coef = treatedfactor1)
 )
 
 #Bayes:  using our prior
@@ -97,18 +100,29 @@ bayes_lr_prior <- brm(grade_diff ~ treatedfactor, prior = brms_prior,
 summary(bayes_lr_prior)
 pp_check(bayes_lr_prior)
 
-#Bayes: look at the conditional effects
-conditional_effects(bayes_lr_prior)
-pp_check(bayes_lr_prior, type = "dens_overlay", ndraws=20)
+#Bayes: group level effects
+bayes_group <- brm(grade_diff ~ (treatedfactor | classfactor),
+                   data = experiment, refresh = 0, warmup = 500, iter = 3000, 
+                   control=list(adapt_delta=0.95))
+
+pairs(bayes_group)
+summary(bayes_group)
+ranef(bayes_group)
+
+#check group vs smaller priors
+loo_compare(loo(bayes_lr_prior), loo(bayes_group))
+
+#check group vs larger priors
+loo_compare(loo(bayes_large_prior), loo(bayes_group))
 
 #Freq:  the frequentist version with our merged data
-flm_merged <- lm(grade_diff ~ treatedfactor*classfactor, data = merged)
+flm_merged <- lm(grade_diff ~ treatedfactor * classfactor, data = merged)
 stargazer::stargazer(flm_merged, type = "text", single.row=TRUE, ci=TRUE, ci.level=0.95)
 
 #Freq:  check out the residuals plot, no bueno
 plot(flm_merged)
 
 #Freq: simplify things
-flm_merged_simple <- lm(grade_diff ~ treatedfactor, data = merged2)
+flm_merged_simple <- lm(grade_diff ~ treatedfactor, data = merged)
 stargazer::stargazer(flm_merged_simple, type = "text", single.row=TRUE, ci=TRUE, ci.level=0.95)
 plot(flm_merged_simple)
